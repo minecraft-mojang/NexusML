@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Enterprise user account profile and access state",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID of the user" },
+        "email": { "type": "string", "description": "Corporate email address" },
+        "displayName": { "type": "string", "description": "Display name of engineer" },
+        "photoUrl": { "type": "string", "description": "Profile avatar image URL" },
+        "role": { "type": "string", "enum": ["ADMIN", "ML_ENGINEER", "DATA_SCIENTIST", "VIEWER"], "description": "RBAC Role" },
+        "isBanned": { "type": "boolean", "description": "Whether user is suspended" },
+        "banReason": { "type": "string", "description": "Explanation for ban if applicable" },
+        "bannedAt": { "type": "string", "format": "date-time", "description": "Timestamp when banned" },
+        "bannedBy": { "type": "string", "description": "Admin who enacted the ban" },
+        "pipelineCount": { "type": "integer", "description": "Number of active pipelines owned" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account registration timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Account last active timestamp" }
+      },
+      "required": ["userId", "email", "displayName", "role", "isBanned", "pipelineCount", "createdAt", "updatedAt"]
+    },
+    "Pipeline": {
+      "title": "Pipeline",
+      "description": "Enterprise machine learning pipeline definition and execution telemetry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Pipeline unique ID" },
+        "name": { "type": "string", "description": "Pipeline identifier title" },
+        "description": { "type": "string", "description": "Pipeline operational summary" },
+        "category": { "type": "string", "description": "ML task domain (e.g. LLM, Vision, Tabular)" },
+        "status": { "type": "string", "enum": ["DRAFT", "QUEUED", "RUNNING", "COMPLETED", "FAILED", "PAUSED"], "description": "Execution status" },
+        "userId": { "type": "string", "description": "Author UID" },
+        "userEmail": { "type": "string", "description": "Author email" },
+        "userName": { "type": "string", "description": "Author display name" },
+        "targetCluster": { "type": "string", "description": "Distributed compute target" },
+        "computeCostPerHour": { "type": "number", "description": "Estimated cluster compute cost per hour" },
+        "currentEpoch": { "type": "integer", "description": "Current active training epoch" },
+        "totalEpochs": { "type": "integer", "description": "Total target epochs" },
+        "progressPercentage": { "type": "integer", "description": "Overall workflow progress 0-100" },
+        "batchSize": { "type": "integer", "description": "Hyperparameter batch size" },
+        "learningRate": { "type": "number", "description": "Hyperparameter learning rate" },
+        "optimizer": { "type": "string", "description": "Optimization algorithm" },
+        "accuracy": { "type": "number", "description": "Validation accuracy metric" },
+        "loss": { "type": "number", "description": "Loss convergence metric" },
+        "f1Score": { "type": "number", "description": "Validation F1 score metric" },
+        "latencyMs": { "type": "integer", "description": "Inference latency in milliseconds" },
+        "throughputQps": { "type": "integer", "description": "Inference throughput queries per second" },
+        "stagesJson": { "type": "string", "description": "Serialized pipeline stages JSON" },
+        "metricsJson": { "type": "string", "description": "Serialized loss/metric history JSON" },
+        "logsJson": { "type": "string", "description": "Serialized execution stdout/stderr logs" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["id", "name", "description", "category", "status", "userId", "userEmail", "targetCluster", "createdAt", "updatedAt"]
+    },
+    "BannedUserRecord": {
+      "title": "BannedUserRecord",
+      "description": "Denylist security record marking toxic suspended accounts",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Banned user UID" },
+        "email": { "type": "string", "description": "Banned user email" },
+        "reason": { "type": "string", "description": "Reason for toxicity ban" },
+        "bannedBy": { "type": "string", "description": "Admin UID who applied ban" },
+        "bannedAt": { "type": "string", "format": "date-time", "description": "Ban enforcement timestamp" }
+      },
+      "required": ["userId", "email", "reason", "bannedBy", "bannedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and governance audit log of administrative actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Log ID" },
+        "action": { "type": "string", "description": "Admin action performed" },
+        "targetUserId": { "type": "string", "description": "Affected user UID" },
+        "targetUserEmail": { "type": "string", "description": "Affected user email" },
+        "actorId": { "type": "string", "description": "Admin UID" },
+        "actorEmail": { "type": "string", "description": "Admin email" },
+        "details": { "type": "string", "description": "Additional context" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Action timestamp" }
+      },
+      "required": ["id", "action", "targetUserId", "actorId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile registry. Each user manages own profile; admins can inspect and ban."
+    },
+    "/pipelines/{pipelineId}": {
+      "schema": { "$ref": "#/entities/Pipeline" },
+      "description": "Enterprise machine learning pipelines created by engineers."
+    },
+    "/banned_users/{userId}": {
+      "schema": { "$ref": "#/entities/BannedUserRecord" },
+      "description": "Security denylist of banned toxic users."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Admin audit log track for enterprise compliance."
+    }
+  }
+}

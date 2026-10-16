@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'joshua270614@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isNotBanned() {
+      return !exists(/databases/$(database)/documents/banned_users/$(request.auth.uid));
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.displayName is string && data.displayName.size() <= 150 &&
+             data.role in ['ADMIN', 'ML_ENGINEER', 'DATA_SCIENTIST', 'VIEWER'] &&
+             data.isBanned is bool &&
+             data.pipelineCount is int && data.pipelineCount >= 0 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 1000)) &&
+             (!('banReason' in data) || data.banReason == null || (data.banReason is string && data.banReason.size() <= 500)) &&
+             (!('bannedBy' in data) || data.bannedBy == null || (data.bannedBy is string && data.bannedBy.size() <= 128)) &&
+             (!('bannedAt' in data) || data.bannedAt == null || data.bannedAt is timestamp);
+    }
+
+    function isValidPipeline(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.category is string && data.category.size() <= 80 &&
+             data.status in ['DRAFT', 'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'PAUSED'] &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userEmail is string && data.userEmail.size() <= 200 &&
+             data.targetCluster is string && data.targetCluster.size() <= 120 &&
+             (!('userName' in data) || data.userName is string) &&
+             (!('computeCostPerHour' in data) || data.computeCostPerHour is number) &&
+             (!('currentEpoch' in data) || data.currentEpoch is int) &&
+             (!('totalEpochs' in data) || data.totalEpochs is int) &&
+             (!('progressPercentage' in data) || data.progressPercentage is int) &&
+             (!('batchSize' in data) || data.batchSize is int) &&
+             (!('learningRate' in data) || data.learningRate is number) &&
+             (!('optimizer' in data) || data.optimizer is string) &&
+             (!('accuracy' in data) || data.accuracy is number) &&
+             (!('loss' in data) || data.loss is number) &&
+             (!('f1Score' in data) || data.f1Score is number) &&
+             (!('latencyMs' in data) || data.latencyMs is int) &&
+             (!('throughputQps' in data) || data.throughputQps is int) &&
+             (!('stagesJson' in data) || data.stagesJson is string) &&
+             (!('metricsJson' in data) || data.metricsJson is string) &&
+             (!('logsJson' in data) || data.logsJson is string);
+    }
+
+    function isValidBannedUserRecord(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.reason is string && data.reason.size() <= 500 &&
+             data.bannedBy is string && data.bannedBy.size() <= 128 &&
+             data.bannedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.action is string && data.action.size() <= 100 &&
+             data.targetUserId is string && data.targetUserId.size() <= 128 &&
+             data.actorId is string && data.actorId.size() <= 128 &&
+             data.timestamp is timestamp;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && isAdmin();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       (!incoming().isBanned || isAdmin()) &&
+                       (incoming().role != 'ADMIN' || isAdmin());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       (isAdmin() || (
+                         incoming().isBanned == existing().isBanned &&
+                         incoming().role == existing().role
+                       ));
+
+      allow delete: if isAdmin();
+    }
+
+    // ML Pipelines
+    match /pipelines/{pipelineId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(pipelineId) &&
+                       isNotBanned() &&
+                       incoming().userId == request.auth.uid &&
+                       isValidPipeline(incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time;
+
+      allow update: if isSignedIn() &&
+                       isValidId(pipelineId) &&
+                       isNotBanned() &&
+                       (resource.data.userId == request.auth.uid || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidPipeline(incoming());
+
+      allow delete: if isSignedIn() &&
+                       isValidId(pipelineId) &&
+                       (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Banned users registry
+    match /banned_users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin() && isValidId(userId) && isValidBannedUserRecord(incoming());
+    }
+
+    // Audit logs
+    match /audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() && isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+
+    // Admins registry
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
