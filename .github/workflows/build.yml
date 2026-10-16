@@ -22,10 +22,10 @@ jobs:
         with:
           gradle-version: 9.3.1
 
-      - name: Install Android SDK platform 36
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       # build.gradle.kts expects debug.keystore in the project root (it's gitignored).
       - name: Generate debug keystore
@@ -50,3 +50,4 @@ jobs:
         with:
           name: NexusML-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          
